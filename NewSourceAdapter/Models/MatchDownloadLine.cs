@@ -122,6 +122,7 @@ namespace NewSourceAdapter.Models
             ColumnDefinition c_col = new ColumnDefinition();
             c_col.Width = new GridLength(0.5, GridUnitType.Star);
 
+
             outer.ColumnDefinitions.Add(id_col);
             outer.ColumnDefinitions.Add(approve_col);
             outer.ColumnDefinitions.Add(link_col);
@@ -258,6 +259,7 @@ namespace NewSourceAdapter.Models
             c_cb.SetValue(Grid.ColumnProperty, 7);
             c_cb.Content = "Select";
             c_cb.IsChecked = Checked;
+            //c_cb.IsEnabled = false;
             c_cb.Click += (object sender, RoutedEventArgs rea) =>
             {
                 Checked = (bool)c_cb.IsChecked;
@@ -265,6 +267,10 @@ namespace NewSourceAdapter.Models
             CheckChanged += (bool b) =>
             {
                 c_cb.IsChecked = b;
+                if (b)
+                    outer.Background = Brushes.LightGreen;
+                else
+                    outer.Background = Brushes.Transparent;
             };
 
             outer.Children.Add(id_block);
@@ -275,6 +281,15 @@ namespace NewSourceAdapter.Models
             outer.Children.Add(border2);
             outer.Children.Add(dnlc_copy_btn);
             outer.Children.Add(c_cb);
+
+            outer.PreviewMouseLeftButtonUp += (object sender, MouseButtonEventArgs mbea) =>
+            {
+                if (mbea.Source != dnlc_copy_btn && mbea.Source != txt_btn
+                    && mbea.Source != c_cb && mbea.Source != link_block)
+                {
+                    Checked = !Checked;
+                }  
+            };
 
             Border border = new Border();
             border.BorderBrush = Brushes.Black;
