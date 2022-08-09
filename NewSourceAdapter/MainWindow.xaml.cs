@@ -9,6 +9,7 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -136,6 +137,8 @@ namespace NewSourceAdapter
             }
         }
 
+        public bool IsFilePath(string path) => new Uri(path).IsFile;
+
         // Event Handlers
 
         private void EventHandler_SomeChecked(bool newState)
@@ -185,17 +188,24 @@ namespace NewSourceAdapter
             string size = "";
             try
             {
-                using (WebClient client = new WebClient())
+                byte[] htmlBytes;
+                if (IsFilePath(newUrl))
                 {
-                    byte[] htmlBytes = client.DownloadData(newUrl);
-
-                    _lastCQ = CQ.Create(new MemoryStream(htmlBytes));
-                    _lastUrl = newUrl;
-                    _lastDownloadedUrl = newUrl;
-
-                    int webSourceSize = htmlBytes.Length;
-                    size = $"{webSourceSize} B";
+                    htmlBytes = File.ReadAllBytes(newUrl);
+                } 
+                else
+                {
+                    using (WebClient client = new WebClient())
+                    {
+                        htmlBytes = client.DownloadData(newUrl);
+                    }
                 }
+                _lastCQ = CQ.Create(new MemoryStream(htmlBytes));
+                _lastUrl = newUrl;
+                _lastDownloadedUrl = newUrl;
+
+                int sourceSize = htmlBytes.Length;
+                size = $"{sourceSize} B";
                 Log($"Page loaded [{DateTime.Now}]", Brushes.White);
             }
             catch (Exception ex)
@@ -227,15 +237,27 @@ namespace NewSourceAdapter
                 worker.DoWork += (object sender, DoWorkEventArgs e) =>
                 {
                     List<MatchDownloadLine> list = new List<MatchDownloadLine>();
+                    string host = "";
+                    if (IsFilePath(_lastUrl))
+                    {
+                        string comment = _lastCQ.Document.FirstChild.ToString();
+                        Regex r = new Regex(@"(?<Protocol>\w+):\/\/(?<Domain>[\w@][\w.:@]+)\/?[\w\.?=%&=\-@/$,]*");
+                        Match m = r.Match(comment);
+                        host = m.Groups[0].Value;
+                    }
+                    else
+                    {
+                        host = new Uri(_lastUrl).GetLeftPart(UriPartial.Authority);
+                    }
+
+                    Uri baseUri = new Uri(host);
                     CQ aResult = _lastCQ.Find("a");
                     for (int i = 0; i < aResult.Count(); i++) 
                     {
                         IDomObject obj = aResult.Get(i);
-                        string href = obj.GetAttribute("href");
+                        string href = WebUtility.UrlDecode(obj.GetAttribute("href"));
                         if (href != null && href.Contains(pattern))
                         {
-                            string host = new Uri(_lastUrl).GetLeftPart(UriPartial.Authority);
-                            var baseUri = new Uri(host);
                             var uri = new Uri(baseUri, href);
                             string filename = System.IO.Path.GetFileName(uri.LocalPath);
                             string text = obj.Cq().Text();
@@ -343,10 +365,22 @@ namespace NewSourceAdapter
                         string href = hashSet.ElementAt(i);
                         Uri uri = new Uri(href);
                         string filename = System.IO.Path.GetFileName(uri.LocalPath);
-
                         try
                         {
-                            client.DownloadFile(href, DownloadFolderFull + "\\" + filename);
+                            if (File.Exists(filename))
+                            {
+                                string subFolder = uri.Segments[uri.Segments.Length-1];
+                                string subFolderPath = $"{DownloadFolderFull}\\{subFolder}";
+                                if (!Directory.Exists(subFolderPath))
+                                {
+                                    Directory.CreateDirectory(subFolderPath);
+                                }
+                                client.DownloadFile(href, $"{subFolderPath}\\{filename}");
+                            }
+                            else
+                            {
+                                client.DownloadFile(href, $"{DownloadFolderFull}\\{filename}");
+                            }
                             (sender as BackgroundWorker).ReportProgress(i * 100 / hashSet.Count);
                         }
                         catch (Exception ex)
